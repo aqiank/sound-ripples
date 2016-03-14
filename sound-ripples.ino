@@ -5,8 +5,6 @@
 #define DEBUG
 
 static const int SAMPLE_WINDOW = 50; // Sample window width in mS (50 mS = 20Hz)
-static const int DELAY_MS = 3000;
-static const int DELAY_INDEX = 3000 / SAMPLE_WINDOW;
 
 static const int BUTTON_PIN = 13;
 
@@ -34,7 +32,8 @@ void setup() {
 #ifdef PLAY_FROM_EEPROM
 	load();
 #else
-	pinMode(BUTTON_PIN, INPUT_PULLUP);
+	pinMode(BUTTON_PIN, OUTPUT);
+	digitalWrite(BUTTON_PIN, HIGH);
 #endif
 
 	SoftPWMBegin(SOFTPWM_NORMAL);
@@ -68,7 +67,7 @@ void loop() {
 	const uint8_t level = getAudioLevel();
 
 	// Check if button is pressed
-	bool bIsButtonPressed = digitalRead(BUTTON_PIN);
+	bool bIsButtonPressed = !digitalRead(BUTTON_PIN);
 
 	// Do stuff as button change state
 	if (bIsButtonPressed != bIsButtonStillPressed) {
@@ -111,9 +110,11 @@ uint8_t getAudioLevel() {
 void onButtonChangeState(bool bIsButtonPressed) {
 	bIsButtonStillPressed = bIsButtonPressed;
 	if (bIsButtonPressed) {
+		setFlowersBrightness(0);
 		recordIndex = 0;
 	} else {
 		save();
+		setMossBrightness(0);
 		bHasPlayedOnce = false;
 		playIndex = 0;
 	}
@@ -123,6 +124,7 @@ void recordOrPlayback(uint8_t level) {
 	if (bIsButtonStillPressed) {
 		if (recordIndex < BUF_LEN) {
 			audioLevels[recordIndex++] = level;
+			setMossBrightness(level);
 #ifdef DEBUG
 			Serial.print("record: ");
 			Serial.println(level);
@@ -132,7 +134,9 @@ void recordOrPlayback(uint8_t level) {
 		if (recordIndex > 0) {
 			const uint8_t level = audioLevels[playIndex];
 			setMossBrightness(level);
-			setFlowersBrightness(getDelayedLevel());
+			if (bHasPlayedOnce) {
+				setFlowersBrightness(level);
+			}
 			playIndex = (playIndex + 1) % (recordIndex + 1);
 			if (playIndex == 0) {
 				bHasPlayedOnce = true;
@@ -154,18 +158,6 @@ void setMossBrightness(uint8_t level) {
 void setFlowersBrightness(uint8_t level) {
 	for (int i = FLOWERS_START_PIN; i <= FLOWERS_END_PIN; i++) {
 		SoftPWMSet(i, level);
-	}
-}
-
-uint8_t getDelayedLevel() {
-	if (bHasPlayedOnce) {
-		int index = playIndex - DELAY_INDEX;
-		if (index < 0) {
-			return (recordIndex + 1) - index;
-		}
-		return index;
-	} else {
-		return 0;
 	}
 }
 
